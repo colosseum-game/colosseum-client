@@ -65,6 +65,7 @@ fn main() {
         physical_resistance: 6,
         intelligence: 69,
         speed: 8,
+        flammability: 5,
         actions: vec![
             Action::Attack,
             Action::Cry,
@@ -81,6 +82,7 @@ fn main() {
         physical_resistance: 8,
         intelligence: 420,
         speed: 12,
+        flammability: 5,
         actions: vec![
             Action::Attack,
             Action::Cry,
@@ -97,13 +99,28 @@ fn main() {
         physical_resistance: 8,
         intelligence: 0,
         speed: 1,
+        flammability: 100,
         actions: vec![
             Action::Skip,
             Action::Cry,
         ],
     };
 
-    let mut combatants = vec![&mut brayden, &mut chay, &mut tree];
+    let mut pyromancer = Combatant {
+        name: "Fire Fuck".to_string(),
+        hp: 45,
+        hp_max: 45,
+        physical_attack: 1,
+        physical_resistance: 1,
+        intelligence: 1,
+        speed: 10,
+        flammability: 0,
+        actions: vec![
+            Action::Burn,
+        ],
+    };
+
+    let mut combatants = vec![&mut pyromancer, &mut tree];
     simulate_combat(&mut combatants);
     println!("{:?}", combatants);
 }
