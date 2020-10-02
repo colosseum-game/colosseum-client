@@ -43,6 +43,7 @@ fn simulate_combat(combatants: &mut [&mut Combatant]) {
 
     let mut living_count = u32::MAX;
     while living_count > 1 {
+        println!("top of loop");
         turn_order.iter().for_each(|combatant_index| {
             let action_index = if *combatant_index == 0 { get_action_index(combatants[*combatant_index]) }
             else { 0 };
@@ -65,7 +66,8 @@ fn main() {
         physical_resistance: 6,
         intelligence: 69,
         speed: 8,
-        flammability: 5,
+        flammability: 1,
+        damage_over_time: 0,
         actions: vec![
             Action::Attack,
             Action::Cry,
@@ -82,7 +84,8 @@ fn main() {
         physical_resistance: 8,
         intelligence: 420,
         speed: 12,
-        flammability: 5,
+        flammability: 1,
+        damage_over_time: 0,
         actions: vec![
             Action::Attack,
             Action::Cry,
@@ -100,6 +103,7 @@ fn main() {
         intelligence: 0,
         speed: 1,
         flammability: 100,
+        damage_over_time:  0,
         actions: vec![
             Action::Skip,
             Action::Cry,
@@ -115,6 +119,7 @@ fn main() {
         intelligence: 1,
         speed: 10,
         flammability: 0,
+        damage_over_time: 0,
         actions: vec![
             Action::Burn,
         ],
