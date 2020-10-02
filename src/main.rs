@@ -43,7 +43,6 @@ fn simulate_combat(combatants: &mut [&mut Combatant]) {
 
     let mut living_count = u32::MAX;
     while living_count > 1 {
-        println!("top of loop");
         turn_order.iter().for_each(|combatant_index| {
             let action_index = if *combatant_index == 0 { get_action_index(combatants[*combatant_index]) }
             else { 0 };
@@ -68,6 +67,8 @@ fn main() {
         speed: 8,
         flammability: 1,
         damage_over_time: 0,
+        isMale: true,
+        isMiso: false,
         actions: vec![
             Action::Attack,
             Action::Cry,
@@ -86,6 +87,8 @@ fn main() {
         speed: 12,
         flammability: 1,
         damage_over_time: 0,
+        isMale: true,
+        isMiso: false,
         actions: vec![
             Action::Attack,
             Action::Cry,
@@ -104,6 +107,8 @@ fn main() {
         speed: 1,
         flammability: 100,
         damage_over_time:  0,
+        isMale: false,
+        isMiso: false,
         actions: vec![
             Action::Skip,
             Action::Cry,
@@ -112,20 +117,40 @@ fn main() {
 
     let mut pyromancer = Combatant {
         name: "Fire Fuck".to_string(),
-        hp: 45,
-        hp_max: 45,
+        hp: 15,
+        hp_max: 15,
         physical_attack: 1,
         physical_resistance: 1,
-        intelligence: 1,
+        intelligence: 50,
         speed: 10,
         flammability: 0,
         damage_over_time: 0,
+        isMale: false,
+        isMiso: false,
         actions: vec![
             Action::Burn,
         ],
     };
 
-    let mut combatants = vec![&mut pyromancer, &mut tree];
+    let mut miso = Combatant {
+        name: "Bimbo the Misogynist".to_string(),
+        hp: 20,
+        hp_max: 20,
+        physical_attack: 7,
+        physical_resistance: 6,
+        intelligence: 1,
+        speed: 10,
+        flammability: 1,
+        damage_over_time: 0,
+        isMale: true,
+        isMiso: true,
+        actions: vec![
+            Action::Miso_Attack,
+            Action::Attack,
+        ],
+    };
+
+    let mut combatants = vec![&mut miso, &mut pyromancer];
     simulate_combat(&mut combatants);
     println!("{:?}", combatants);
 }
