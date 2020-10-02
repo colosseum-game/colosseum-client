@@ -1,6 +1,9 @@
 use coliseum::{
     actions::Action,
     combatant::Combatant,
+    combatant::Gender::Male,
+    combatant::Gender::Female,
+    combatant::Gender::None,
 };
 
 fn calculate_turn_order(combatants: &[&mut Combatant]) -> Vec<usize> {
@@ -67,7 +70,7 @@ fn main() {
         speed: 8,
         flammability: 1,
         damage_over_time: 0,
-        isMale: true,
+        gender: Male,
         isMiso: false,
         actions: vec![
             Action::Attack,
@@ -87,7 +90,7 @@ fn main() {
         speed: 12,
         flammability: 1,
         damage_over_time: 0,
-        isMale: true,
+        gender: Male,
         isMiso: false,
         actions: vec![
             Action::Attack,
@@ -107,7 +110,7 @@ fn main() {
         speed: 1,
         flammability: 100,
         damage_over_time:  0,
-        isMale: false,
+        gender: None,
         isMiso: false,
         actions: vec![
             Action::Skip,
@@ -125,7 +128,7 @@ fn main() {
         speed: 10,
         flammability: 0,
         damage_over_time: 0,
-        isMale: false,
+        gender: Female,
         isMiso: false,
         actions: vec![
             Action::Burn,
@@ -142,7 +145,7 @@ fn main() {
         speed: 10,
         flammability: 1,
         damage_over_time: 0,
-        isMale: true,
+        gender: Male,
         isMiso: true,
         actions: vec![
             Action::Miso_Attack,
