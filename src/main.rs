@@ -148,12 +148,12 @@ fn main() {
         gender: Male,
         isMiso: true,
         actions: vec![
-            Action::Miso_Attack,
+            Action::MisoAttack,
             Action::Attack,
         ],
     };
 
-    let mut combatants = vec![&mut miso, &mut pyromancer];
+    let mut combatants = vec![&mut miso, &mut brayden];
     simulate_combat(&mut combatants);
     println!("{:?}", combatants);
 }
