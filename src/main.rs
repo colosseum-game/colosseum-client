@@ -105,7 +105,7 @@ fn main() -> std::io::Result<()> {
         ],
     };
 
-    let mut combatants = vec![&mut miso, &mut pyromancer];
+    let mut combatants = vec![&mut miso, &mut brayden];
     simulate_combat(&mut combatants);
     println!("{:?}", combatants);
 
