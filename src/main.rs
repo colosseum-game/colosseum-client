@@ -48,28 +48,29 @@ fn get_action_index(combatant: &Combatant) -> usize {
     else { input }
 }
 
-fn apply_active_damage(target: &mut Combatant, source: EffectSource, damage_type: DamageType, multiplier: u32, divisor: u32, turns_to_live: u32) {
-    let active_damage = ActiveDamage {
-        damage_type: damage_type,
-        value: damage_type.damage_from_source(target, source, multiplier, divisor),
-    };
-
-    target.active_damage.push((active_damage, turns_to_live));
-}
-
-fn apply_active_modifier(target: &mut Combatant, modifier: Modifier, stat: Stat, turns_to_live: u32) {
-    target.active_stat_modifiers[stat as usize].push((modifier, turns_to_live))
-}
-
-fn apply_damage(target: &mut Combatant, source: EffectSource, damage_type: DamageType, multiplier: u32, divisor: u32) {
+fn apply_damage(target: &mut Combatant, source: EffectSource, damage_type: DamageType, multiplier: u32, divisor: u32, turns_to_live: Option<u32>) {
     let damage_value = damage_type.damage_from_source(target, source, multiplier, divisor);
     let damage_reduction = damage_type.damage_reduction_from_target(target);
     if damage_reduction > damage_value { return; }
-    target.hp -= std::cmp::min(damage_value - damage_reduction, target.hp); // TODO: overflow stuff nananana
+
+    match turns_to_live {
+        Some(ttl) => {
+            let active_damage = ActiveDamage {
+                damage_type: damage_type,
+                value: damage_value,
+            };
+
+            target.active_damage.push((active_damage, ttl));
+        },
+        None => target.hp -= std::cmp::min(damage_value - damage_reduction, target.hp),
+    };
 }
 
-fn apply_modifier(target: &mut Combatant, modifier: Modifier, stat: Stat) {
-    target.stat_modifiers[stat as usize].push(modifier);
+fn apply_modifier(target: &mut Combatant, modifier: Modifier, stat: Stat, turns_to_live: Option<u32>) {
+    match turns_to_live {
+        Some(ttl) => target.active_stat_modifiers[stat as usize].push((modifier, ttl)),
+        None => target.stat_modifiers[stat as usize].push(modifier),
+    };
 }
 
 fn simulate_combat(combatants: &mut [Combatant]) {
@@ -98,10 +99,10 @@ fn simulate_combat(combatants: &mut [Combatant]) {
 
             for effect in sub_action.effects {
                 match *effect {
-                    Effect::ActiveDamage(damage_type, multiplier, divisor, turns_to_live) => apply_active_damage(target, source, damage_type, multiplier, divisor, turns_to_live),
-                    Effect::ActiveModifier(modifier, stat, turns_to_live) => apply_active_modifier(target, modifier, stat, turns_to_live),
-                    Effect::Damage(damage_type, multiplier, divisor) => apply_damage(target, source, damage_type, multiplier, divisor),
-                    Effect::Modifier(modifier, stat) => apply_modifier(target, modifier, stat),
+                    Effect::ActiveDamage(damage_type, multiplier, divisor, turns_to_live) => apply_damage(target, source, damage_type, multiplier, divisor, Some(turns_to_live)),
+                    Effect::ActiveModifier(modifier, stat, turns_to_live) => apply_modifier(target, modifier, stat, Some(turns_to_live)),
+                    Effect::Damage(damage_type, multiplier, divisor) => apply_damage(target, source, damage_type, multiplier, divisor, None),
+                    Effect::Modifier(modifier, stat) => apply_modifier(target, modifier, stat, None),
                 };
             }
         }
@@ -112,35 +113,28 @@ fn simulate_combat(combatants: &mut [Combatant]) {
 }
 
 fn main() -> std::io::Result<()> {
-    let brayden = Combatant {
-        name: "Brayden".to_string(),
-        gender: Gender::Male,
+    let brayden = Combatant::new()
+        .with_name("Brayden".to_string())
+        .with_gender(Gender::Male)
+        .with_actions(&[&ATTACK, &BEAT_FEMALE, &SKIP])
+        .with_hp(70, 70)
+        .with_active_damage(ActiveDamage { damage_type: DamageType::Fire, value: 802 }, 4)
+        .with_stat(Stat::Agility, 12)
+        .with_stat(Stat::FireAttack, 0)
+        .with_stat(Stat::FireResistance, 800)
+        .with_stat(Stat::PhysicalAttack, 26)
+        .with_stat(Stat::PhysicalResistance, 9);
 
-        actions: vec![&ATTACK, &SKIP],
-
-        hp: 69,
-        hp_max: 69,
-        active_damage: vec![],
-
-        stats: [12, 0, 800, 26, 9],
-        stat_modifiers: [vec![], vec![], vec![], vec![], vec![]],
-        active_stat_modifiers: [vec![], vec![], vec![], vec![], vec![]],
-    };
-
-    let chay = Combatant {
-        name: "Chay".to_string(),
-        gender: Gender::Male,
-
-        actions: vec![&ATTACK, &SKIP],
-
-        hp: 12,
-        hp_max: 12,
-        active_damage: vec![],
-
-        stats: [26, 6, 3, 14, 15],
-        stat_modifiers: [vec![], vec![], vec![], vec![], vec![]],
-        active_stat_modifiers: [vec![], vec![], vec![], vec![], vec![]],
-    };
+    let chay = Combatant::new()
+        .with_name("Chay".to_string())
+        .with_gender(Gender::Male)
+        .with_actions(&[&ATTACK, &SKIP])
+        .with_hp(46, 46)
+        .with_stat(Stat::Agility, 26)
+        .with_stat(Stat::FireAttack, 0)
+        .with_stat(Stat::FireResistance, 0)
+        .with_stat(Stat::PhysicalAttack, 17)
+        .with_stat(Stat::PhysicalResistance, 12);
 
     let combatants = &mut vec![brayden, chay];
     simulate_combat(combatants);
