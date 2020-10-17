@@ -1,9 +1,13 @@
 use coliseum::{
-    actions::Action,
-    combatant::Combatant,
-    combatant::Gender::Male,
-    combatant::Gender::Female,
-    combatant::Gender::None,
+    combatant::{
+        Combatant,
+        Gender,
+    }
+};
+
+use std::{
+    io::prelude::*,
+    net::TcpStream,
 };
 
 fn calculate_turn_order(combatants: &[&mut Combatant]) -> Vec<usize> {
@@ -59,64 +63,12 @@ fn simulate_combat(combatants: &mut [&mut Combatant]) {
     }
 }
 
-fn main() {
-    let mut brayden = Combatant {
-        name: "Brayden".to_string(),
-        hp: 45,
-        hp_max: 45,
-        physical_attack: 12,
-        physical_resistance: 6,
-        intelligence: 69,
-        speed: 8,
-        flammability: 1,
-        damage_over_time: 0,
-        gender: Male,
-        isMiso: false,
-        actions: vec![
-            Action::Attack,
-            Action::Cry,
-            Action::Skip,
-            Action::UseItem,
-        ],
-    };
-
-    let mut chay = Combatant {
-        name: "Chay".to_string(),
-        hp: 30,
-        hp_max: 30,
-        physical_attack: 7,
-        physical_resistance: 8,
-        intelligence: 420,
-        speed: 12,
-        flammability: 1,
-        damage_over_time: 0,
-        gender: Male,
-        isMiso: false,
-        actions: vec![
-            Action::Attack,
-            Action::Cry,
-            Action::Skip,
-            Action::UseItem,
-        ],
-    };
-
-    let mut tree = Combatant {
-        name: "Birch Boy".to_string(),
-        hp: 700,
-        hp_max: 700,
-        physical_attack: 0,
-        physical_resistance: 8,
-        intelligence: 0,
-        speed: 1,
-        flammability: 100,
-        damage_over_time:  0,
-        gender: None,
-        isMiso: false,
-        actions: vec![
-            Action::Skip,
-            Action::Cry,
-        ],
-    };
+fn main() -> std::io::Result<()> {
+    let mut stream = TcpStream::connect("127.0.0.1:40004").unwrap();
+    let mut buf = [0; 128];
+    stream.write("Hello Server!".as_bytes())?; // ignore the Result
+    stream.read(&mut buf)?; // ignore this too
+    println!("Read result: {}", String::from_utf8_lossy(&buf[..]));
 
     let mut pyromancer = Combatant {
         name: "Fire Fuck".to_string(),
@@ -148,7 +100,7 @@ fn main() {
         gender: Male,
         isMiso: true,
         actions: vec![
-            Action::Miso_Attack,
+            Action::MisoAttack,
             Action::Attack,
         ],
     };
@@ -156,4 +108,6 @@ fn main() {
     let mut combatants = vec![&mut miso, &mut pyromancer];
     simulate_combat(&mut combatants);
     println!("{:?}", combatants);
+
+    Ok(())
 }
