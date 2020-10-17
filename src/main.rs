@@ -85,16 +85,17 @@ fn simulate_combat(combatants: &mut [Combatant]) {
 
         for sub_action in action.sub_actions {
             let target_index = (source_index + 1) % combatants.len();
-            let (target, source) = if source_index == target_index {
-                (&mut combatants[target_index], EffectSource::Target)
-            } 
-            else if source_index > target_index {
-                let (target_container, source_container) = combatants.split_at_mut(source_index);
-                (&mut target_container[target_index], EffectSource::Other(&source_container[0]))
-            }
-            else {
-                let (source_container, target_container) = combatants.split_at_mut(target_index);
-                (&mut target_container[0], EffectSource::Other(&source_container[source_index]))
+
+            let (target, source) = match source_index {
+                source_index if source_index > target_index => {
+                    let (target_container, source_container) = combatants.split_at_mut(source_index);
+                    (&mut target_container[target_index], EffectSource::Other(&source_container[0]))
+                },
+                source_index if source_index < target_index => {
+                    let (source_container, target_container) = combatants.split_at_mut(target_index);
+                    (&mut target_container[0], EffectSource::Other(&source_container[source_index]))
+                }
+                _ => (&mut combatants[target_index], EffectSource::Target),
             };
 
             for effect in sub_action.effects {
