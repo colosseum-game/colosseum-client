@@ -5,7 +5,10 @@ use coliseum::{
         Gender,
         Stat,
     },
-    damage::DamageType,
+    damage::{
+        DamagePerTurn,
+        DamageType,
+    },
     effects::{
         Effect,
         EffectSource,
@@ -55,7 +58,7 @@ fn apply_damage(target: &mut Combatant, source: EffectSource, damage_type: Damag
     if damage_reduction > damage_value { return; }
 
     match turns_to_live {
-        Some(ttl) => target.damage_per_turn.push(((damage_type, damage_value), ttl)),
+        Some(ttl) => target.damage_per_turn.push(DamagePerTurn { damage_type: damage_type, value: damage_value, turns_to_live: ttl }),
         None => target.hp -= std::cmp::min(damage_value - damage_reduction, target.hp),
     };
 }
@@ -78,6 +81,7 @@ fn simulate_combat(combatants: &mut [Combatant]) {
     while living_count > 1 {
         let source_index = match turn_order.next() { Some(i) => *i, None => panic!() };
 
+        for damage_per_turn in &mut combatants[source_index].damage_per_turn { damage_per_turn.value -= std::cmp::min(damage_per_turn.value, 1) }
         for modifier in &mut combatants[source_index].agility_modifiers { if let Some(ref mut turns_left) = modifier.turns_to_live { *turns_left -= std::cmp::min(*turns_left, 1) } }
         for modifier in &mut combatants[source_index].fire_attack_modifiers { if let Some(ref mut turns_left) = modifier.turns_to_live { *turns_left -= std::cmp::min(*turns_left, 1) } }
         for modifier in &mut combatants[source_index].fire_resistance_modifiers { if let Some(ref mut turns_left) = modifier.turns_to_live { *turns_left -= std::cmp::min(*turns_left, 1) } }
@@ -108,6 +112,11 @@ fn simulate_combat(combatants: &mut [Combatant]) {
                     Effect::Modifier(modifier, stat) => apply_modifier(target, modifier, stat),
                 };
             }
+        }
+
+        for i in 0..combatants[source_index].damage_per_turn.len() {
+            let damage_per_turn = combatants[source_index].damage_per_turn[i];
+            apply_damage(&mut combatants[source_index], EffectSource::None, damage_per_turn.damage_type, damage_per_turn.value, 1, None)
         }
 
         combatants[source_index].agility_modifiers.retain(|modifier| match modifier.turns_to_live { Some(x) => x > 0, _ => true } );
