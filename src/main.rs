@@ -5,15 +5,16 @@ use coliseum::{
         Gender,
         Stat,
     },
-    damage::{
-        ActiveDamage,
-        DamageType,
-    },
+    damage::DamageType,
     effects::{
         Effect,
         EffectSource,
     },
-    modifiers::Modifier,
+    items::Item,
+    modifiers::{
+        Modifier,
+        ModifierType,
+    },
 };
 
 fn calculate_turn_order(combatants: &[Combatant]) -> Vec<usize> {
@@ -54,23 +55,19 @@ fn apply_damage(target: &mut Combatant, source: EffectSource, damage_type: Damag
     if damage_reduction > damage_value { return; }
 
     match turns_to_live {
-        Some(ttl) => {
-            let active_damage = ActiveDamage {
-                damage_type: damage_type,
-                value: damage_value,
-            };
-
-            target.active_damage.push((active_damage, ttl));
-        },
+        Some(ttl) => target.damage_per_turn.push(((damage_type, damage_value), ttl)),
         None => target.hp -= std::cmp::min(damage_value - damage_reduction, target.hp),
     };
 }
 
-fn apply_modifier(target: &mut Combatant, modifier: Modifier, stat: Stat, turns_to_live: Option<u32>) {
-    match turns_to_live {
-        Some(ttl) => target.active_stat_modifiers[stat as usize].push((modifier, ttl)),
-        None => target.stat_modifiers[stat as usize].push(modifier),
-    };
+fn apply_modifier(target: &mut Combatant, modifier: Modifier, stat: Stat) {
+    match stat {
+        Stat::Agility => target.agility_modifiers.push(modifier),
+        Stat::FireAttack => target.fire_attack_modifiers.push(modifier),
+        Stat::FireResistance => target.fire_resistance_modifiers.push(modifier),
+        Stat::PhysicalAttack => target.physical_attack_modifiers.push(modifier),
+        Stat::PhysicalResistance => target.physical_resistance_modifiers.push(modifier),
+    }
 }
 
 fn simulate_combat(combatants: &mut [Combatant]) {
@@ -95,15 +92,13 @@ fn simulate_combat(combatants: &mut [Combatant]) {
                     let (source_container, target_container) = combatants.split_at_mut(target_index);
                     (&mut target_container[0], EffectSource::Other(&source_container[source_index]))
                 }
-                _ => (&mut combatants[target_index], EffectSource::Target),
+                _ => (&mut combatants[target_index], EffectSource::Origin),
             };
 
             for effect in sub_action.effects {
                 match *effect {
-                    Effect::ActiveDamage(damage_type, multiplier, divisor, turns_to_live) => apply_damage(target, source, damage_type, multiplier, divisor, Some(turns_to_live)),
-                    Effect::ActiveModifier(modifier, stat, turns_to_live) => apply_modifier(target, modifier, stat, Some(turns_to_live)),
-                    Effect::Damage(damage_type, multiplier, divisor) => apply_damage(target, source, damage_type, multiplier, divisor, None),
-                    Effect::Modifier(modifier, stat) => apply_modifier(target, modifier, stat, None),
+                    Effect::Damage(damage_type, multiplier, divisor, turns_to_live) => apply_damage(target, source, damage_type, multiplier, divisor, turns_to_live),
+                    Effect::Modifier(modifier, stat) => apply_modifier(target, modifier, stat),
                 };
             }
         }
@@ -114,28 +109,117 @@ fn simulate_combat(combatants: &mut [Combatant]) {
 }
 
 fn main() -> std::io::Result<()> {
-    let brayden = Combatant::new()
-        .with_name("Brayden".to_string())
-        .with_gender(Gender::Male)
-        .with_actions(&[&ATTACK, &BEAT_FEMALE, &SKIP])
-        .with_hp(70, 70)
-        .with_active_damage(ActiveDamage { damage_type: DamageType::Fire, value: 802 }, 4)
-        .with_stat(Stat::Agility, 12)
-        .with_stat(Stat::FireAttack, 0)
-        .with_stat(Stat::FireResistance, 800)
-        .with_stat(Stat::PhysicalAttack, 26)
-        .with_stat(Stat::PhysicalResistance, 9);
+    let attack = Action {
+        display_name: "Attack",
+        sub_actions: &[
+            SubAction {
+                effects: &[
+                    Effect::Damage(DamageType::Physical, 1, 1, None),
+                ],
+                target_flags: &[&[TargetFlag::Any]],
+                target_count: 1,
+            },
+        ],
+    };
+    
+    let beat_female = Action {
+        display_name: "Beat female",
+        sub_actions: &[
+            SubAction {
+                effects: &[
+                    Effect::Damage(DamageType::Physical, 2, 1, None),
+                ],
+                target_flags: &[
+                    &[TargetFlag::Gender(Gender::Female)]
+                ],
+                target_count: 1,
+            },
+            SubAction {
+                effects: &[
+                    Effect::Modifier(
+                        Modifier {
+                            modifier_type: ModifierType::Subtract, 
+                            value: 5,
+                            turns_to_live: Some(1),
+                        },
+                        Stat::PhysicalAttack,
+                    ),
+                ],
+                target_flags: &[
+                    &[TargetFlag::Origin]
+                ],
+                target_count: 1,
+            },
+        ],
+    };
 
-    let chay = Combatant::new()
-        .with_name("Chay".to_string())
-        .with_gender(Gender::Male)
-        .with_actions(&[&ATTACK, &SKIP])
-        .with_hp(46, 46)
-        .with_stat(Stat::Agility, 26)
-        .with_stat(Stat::FireAttack, 0)
-        .with_stat(Stat::FireResistance, 0)
-        .with_stat(Stat::PhysicalAttack, 17)
-        .with_stat(Stat::PhysicalResistance, 12);
+    let skip = Action {
+        display_name: "Skip",
+        sub_actions: &[],
+    };
+
+    let grenade = Item {
+        display_name: "Grenade",
+        effects: &[
+            Effect::Damage(DamageType::Physical, 12, 1, None),
+            Effect::Damage(DamageType::Fire, 5, 1, Some(3)),
+        ],
+        target_flags: &[&[TargetFlag::Any]],
+        target_count: 1,
+    };
+
+    let cracked_bellroot_seed = Item {
+        display_name: "Cracked Bellroot Seed",
+        effects: &[
+            Effect::Damage(DamageType::Physical, 4, 1, None),
+        ],
+        target_flags: &[&[TargetFlag::Any]],
+        target_count: 3,
+    };
+
+    let brayden = Combatant {
+        name: "Brayden",
+        gender: Gender::Male,
+        actions: &[&attack, &skip],
+
+        hp: 70,
+        hp_max: 70,
+        damage_per_turn: vec![],
+
+        agility: 12,
+        fire_attack: 0,
+        fire_resistance: 800,
+        physical_attack: 26,
+        physical_resistance: 9,
+
+        agility_modifiers: vec![],
+        fire_attack_modifiers: vec![],
+        fire_resistance_modifiers: vec![],
+        physical_attack_modifiers: vec![],
+        physical_resistance_modifiers: vec![],
+    };
+
+    let chay = Combatant {
+        name: "Chay",
+        gender: Gender::Male,
+        actions: &[&attack, &skip],
+
+        hp: 46,
+        hp_max: 46,
+        damage_per_turn: vec![],
+
+        agility: 26,
+        fire_attack: 0,
+        fire_resistance: 0,
+        physical_attack: 17,
+        physical_resistance: 12,
+
+        agility_modifiers: vec![],
+        fire_attack_modifiers: vec![],
+        fire_resistance_modifiers: vec![],
+        physical_attack_modifiers: vec![],
+        physical_resistance_modifiers: vec![],
+    };
 
     let combatants = &mut vec![brayden, chay];
     simulate_combat(combatants);
