@@ -81,7 +81,7 @@ fn simulate_combat(combatants: &mut [Combatant]) {
     while living_count > 1 {
         let source_index = match turn_order.next() { Some(i) => *i, None => panic!() };
 
-        for damage_per_turn in &mut combatants[source_index].damage_per_turn { damage_per_turn.value -= std::cmp::min(damage_per_turn.value, 1) }
+        for damage_per_turn in &mut combatants[source_index].damage_per_turn { damage_per_turn.turns_to_live -= std::cmp::min(damage_per_turn.turns_to_live, 1) }
         for modifier in &mut combatants[source_index].agility_modifiers { if let Some(ref mut turns_left) = modifier.turns_to_live { *turns_left -= std::cmp::min(*turns_left, 1) } }
         for modifier in &mut combatants[source_index].fire_attack_modifiers { if let Some(ref mut turns_left) = modifier.turns_to_live { *turns_left -= std::cmp::min(*turns_left, 1) } }
         for modifier in &mut combatants[source_index].fire_resistance_modifiers { if let Some(ref mut turns_left) = modifier.turns_to_live { *turns_left -= std::cmp::min(*turns_left, 1) } }
@@ -114,17 +114,21 @@ fn simulate_combat(combatants: &mut [Combatant]) {
             }
         }
 
+        // Apply damage per turn post turn
         for i in 0..combatants[source_index].damage_per_turn.len() {
             let damage_per_turn = combatants[source_index].damage_per_turn[i];
             apply_damage(&mut combatants[source_index], EffectSource::None, damage_per_turn.damage_type, damage_per_turn.value, 1, None)
         }
 
+        // Remove modifiers and damage per turn if the turns_to_live count is 0
+        combatants[source_index].damage_per_turn.retain(|damage_per_turn| damage_per_turn.turns_to_live > 0 );
         combatants[source_index].agility_modifiers.retain(|modifier| match modifier.turns_to_live { Some(x) => x > 0, _ => true } );
         combatants[source_index].fire_attack_modifiers.retain(|modifier| match modifier.turns_to_live { Some(x) => x > 0, _ => true } );
         combatants[source_index].fire_resistance_modifiers.retain(|modifier| match modifier.turns_to_live { Some(x) => x > 0, _ => true } );
         combatants[source_index].physical_attack_modifiers.retain(|modifier| match modifier.turns_to_live { Some(x) => x > 0, _ => true } );
         combatants[source_index].physical_resistance_modifiers.retain(|modifier| match modifier.turns_to_live { Some(x) => x > 0, _ => true } );
 
+        // Calculate living to determine winner
         living_count = 0;
         combatants.iter().for_each(|combatant| if combatant.alive() { living_count += 1; });
     }
@@ -137,6 +141,19 @@ fn main() -> std::io::Result<()> {
             SubAction {
                 effects: &[
                     Effect::Damage(DamageType::Physical, 1, 1, None),
+                ],
+                target_flags: &[&[TargetFlag::Any]],
+                target_count: 1,
+            },
+        ],
+    };
+
+    let scorch = Action {
+        display_name: "Scorch",
+        sub_actions: &[
+            SubAction {
+                effects: &[
+                    Effect::Damage(DamageType::Fire, 5, 1, Some(3)),
                 ],
                 target_flags: &[&[TargetFlag::Any]],
                 target_count: 1,
@@ -184,7 +201,7 @@ fn main() -> std::io::Result<()> {
         display_name: "Grenade",
         effects: &[
             Effect::Damage(DamageType::Physical, 12, 1, None),
-            Effect::Damage(DamageType::Fire, 5, 1, Some(3)),
+            Effect::Damage(DamageType::Fire, 5, 2, Some(3)),
         ],
         target_flags: &[&[TargetFlag::Any]],
         target_count: 1,
@@ -210,7 +227,7 @@ fn main() -> std::io::Result<()> {
 
         agility: 12,
         fire_attack: 0,
-        fire_resistance: 800,
+        fire_resistance: 0,
         physical_attack: 26,
         physical_resistance: 9,
 
@@ -224,15 +241,15 @@ fn main() -> std::io::Result<()> {
     let chay = Combatant {
         name: "Chay",
         gender: Gender::Male,
-        actions: &[&attack, &skip],
+        actions: &[&scorch],
 
         hp: 46,
         hp_max: 46,
         damage_per_turn: vec![],
 
         agility: 26,
-        fire_attack: 0,
-        fire_resistance: 0,
+        fire_attack: 2,
+        fire_resistance: 1000,
         physical_attack: 17,
         physical_resistance: 12,
 
