@@ -1,8 +1,8 @@
 [package]
-name = "coliseum-client"
+name = "colosseum-client"
 version = "0.1.0"
 authors = ["Chay Nabors <chaynabors@gmail.com>"]
 edition = "2018"
 
 [dependencies]
-coliseum = { path = "../coliseum" }
+colosseum = { path = "../colosseum" }

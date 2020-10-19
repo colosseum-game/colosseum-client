@@ -1,4 +1,4 @@
-use coliseum::{
+use colosseum::{
     actions::*,
     combatant::{
         Combatant,
@@ -14,10 +14,7 @@ use coliseum::{
         EffectSource,
     },
     items::Item,
-    modifiers::{
-        Modifier,
-        ModifierType,
-    },
+    modifiers::Modifier,
 };
 
 fn calculate_turn_order(combatants: &[Combatant]) -> Vec<usize> {
