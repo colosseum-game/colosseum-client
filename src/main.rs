@@ -77,6 +77,13 @@ fn simulate_combat(combatants: &mut [Combatant]) {
 
     while living_count > 1 {
         let source_index = match turn_order.next() { Some(i) => *i, None => panic!() };
+
+        for modifier in &mut combatants[source_index].agility_modifiers { if let Some(ref mut turns_left) = modifier.turns_to_live { *turns_left -= std::cmp::min(*turns_left, 1) } }
+        for modifier in &mut combatants[source_index].fire_attack_modifiers { if let Some(ref mut turns_left) = modifier.turns_to_live { *turns_left -= std::cmp::min(*turns_left, 1) } }
+        for modifier in &mut combatants[source_index].fire_resistance_modifiers { if let Some(ref mut turns_left) = modifier.turns_to_live { *turns_left -= std::cmp::min(*turns_left, 1) } }
+        for modifier in &mut combatants[source_index].physical_attack_modifiers { if let Some(ref mut turns_left) = modifier.turns_to_live { *turns_left -= std::cmp::min(*turns_left, 1) } }
+        for modifier in &mut combatants[source_index].physical_resistance_modifiers { if let Some(ref mut turns_left) = modifier.turns_to_live { *turns_left -= std::cmp::min(*turns_left, 1) } }
+
         let action_index = if source_index == 0 { get_action_index(&combatants[source_index]) } else { 0 };
         let action = combatants[source_index].actions[action_index];
 
@@ -102,6 +109,12 @@ fn simulate_combat(combatants: &mut [Combatant]) {
                 };
             }
         }
+
+        combatants[source_index].agility_modifiers.retain(|modifier| match modifier.turns_to_live { Some(x) => x > 0, _ => true } );
+        combatants[source_index].fire_attack_modifiers.retain(|modifier| match modifier.turns_to_live { Some(x) => x > 0, _ => true } );
+        combatants[source_index].fire_resistance_modifiers.retain(|modifier| match modifier.turns_to_live { Some(x) => x > 0, _ => true } );
+        combatants[source_index].physical_attack_modifiers.retain(|modifier| match modifier.turns_to_live { Some(x) => x > 0, _ => true } );
+        combatants[source_index].physical_resistance_modifiers.retain(|modifier| match modifier.turns_to_live { Some(x) => x > 0, _ => true } );
 
         living_count = 0;
         combatants.iter().for_each(|combatant| if combatant.alive() { living_count += 1; });
@@ -180,7 +193,7 @@ fn main() -> std::io::Result<()> {
     let brayden = Combatant {
         name: "Brayden",
         gender: Gender::Male,
-        actions: &[&attack, &skip],
+        actions: &[&attack, &beat_female, &skip],
 
         hp: 70,
         hp_max: 70,
