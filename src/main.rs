@@ -15,10 +15,27 @@ use colosseum::{
         Effect,
         EffectSource,
     },
-    items::Item,
     lifetime::Lifetime,
     math::Fraction,
     modifiers::Modifier,
+};
+
+use gilrs::{
+    Button,
+    EventType,
+    Gilrs,
+};
+
+use winit::{
+    event::{
+        Event,
+        WindowEvent,
+    },
+    event_loop::{
+        ControlFlow,
+        EventLoop,
+    },
+    window::Window,
 };
 
 fn calculate_turn_order(combatants: &[Combatant]) -> Vec<usize> {
@@ -28,51 +45,27 @@ fn calculate_turn_order(combatants: &[Combatant]) -> Vec<usize> {
     turn_order
 }
 
-pub fn get_input() -> usize {
-    let mut buf = String::new();
-    let result = std::io::stdin().read_line(&mut buf);
-    println!();
-    match result {
-        Result::Ok(_) => {
-            let result = buf.trim_end().parse::<i32>();
-            match result {
-                Result::Ok(index) => index as usize,
-                Result::Err(_) => { get_input() },
+fn calculate_possible_targets(combatants: &[Combatant], source_index: usize, sub_action: &SubAction) -> Vec<usize> {
+    combatants
+        .iter()
+        .enumerate()
+        .filter(|&(index, combatant)| {
+            sub_action.target_flags.iter().fold(true, |is_valid_target, or_conditions| {
+                is_valid_target && or_conditions.iter().fold(false, |is_valid_target, target_flag| {
+                    is_valid_target || match *target_flag {
+                        TargetFlag::Any => true,
+                        TargetFlag::Gender(gender) => combatant.gender == gender,
+                        TargetFlag::Origin => source_index == index,
+                    }
+                })
             }
-        },
-        Result::Err(_) => { get_input() },
-    }
-}
-
-fn get_action_index(combatant: &Combatant) -> usize {
-    println!("Select an action:");
-    combatant.actions.iter().enumerate().for_each(|(i, action)| {
-        println!("{}: {}", i, action);
-    });
-
-    let input = get_input();
-    if input >= combatant.actions.len() { get_action_index(combatant) }
-    else { input }
-}
-
-fn get_target_index(combatants: &[Combatant], possible_targets: &[usize]) -> usize {
-    println!("Select a target:");
-    for index in possible_targets {
-        println!("{}. {}", index, combatants[*index]);
-    }
-
-    let input = get_input();
-    let mut valid_input = false;
-    for index in possible_targets {
-        if input == *index { valid_input = true }
-    }
-
-    if valid_input { input }
-    else { get_target_index(combatants, possible_targets) }
+        )})
+        .map(|(index, _)| index)
+        .collect()
 }
 
 fn calculate_damage_value(target: &Combatant, source: EffectSource, aspect: DamageAspect, scaling: Fraction) -> u32 {
-    let mut damage_value = match aspect {
+    let damage_value = match aspect {
         DamageAspect::Fire => match source {
             EffectSource::None => 1,
             EffectSource::Origin => target.get_stat(Stat::FireAttack),
@@ -85,7 +78,7 @@ fn calculate_damage_value(target: &Combatant, source: EffectSource, aspect: Dama
         },
     };
 
-    damage_value * scaling.numerator / scaling.denominator
+    damage_value * scaling.0 / scaling.1
 }
 
 fn calculate_defense_value(target: &Combatant, aspect: DamageAspect) -> u32 {
@@ -134,90 +127,323 @@ fn apply_status_effect(target: &mut Combatant, source: EffectSource, status_effe
     target.status_effects.push(status_effect);
 }
 
-fn simulate_combat(combatants: &mut [Combatant]) {
-    let turn_order = calculate_turn_order(combatants);
-    let mut turn_order = turn_order.iter().cycle();
-    let mut living_count = u32::MAX;
+#[derive(Clone, Copy, Debug)]
+enum Input {
+    Select,
+    Cancel,
+    Next,
+    Previous,
+}
 
-    while living_count > 1 {
-        let source_index = match turn_order.next() { Some(i) => *i, None => panic!() };
+fn get_input(input_instance: &mut Gilrs) -> Vec<Input> {
+    let mut input = vec![];
 
-        // decrement the lifetime of status_effects
-        for status_effect in &mut combatants[source_index].status_effects {
+    while let Some(gilrs::Event { event, .. }) = input_instance.next_event() {
+        match event {
+            EventType::ButtonPressed(button, ..) => {
+                match button {
+                    Button::DPadDown => input.push(Input::Next),
+                    Button::DPadUp => input.push(Input::Previous),
+                    Button::East => input.push(Input::Cancel),
+                    Button::Select => input.push(Input::Cancel),
+                    Button::South => input.push(Input::Select),
+                    Button::Start => input.push(Input::Select),
+                    _ => (),
+                }
+            },
+            _ => (),
+        }
+    }
+
+    input
+}
+
+#[derive(Clone, Debug)]
+struct PreTurn;
+
+#[derive(Clone, Debug)]
+struct GetAction {
+    source_index: usize,
+    action_index: usize,
+}
+
+#[derive(Clone, Debug)]
+struct GetSubAction {
+    source_index: usize,
+    action_index: usize,
+    sub_action_index: usize,
+    target_indices: Vec<Vec<usize>>,
+}
+
+#[derive(Clone, Debug)]
+struct GetTargets {
+    source_index: usize,
+    action_index: usize,
+    sub_action_index: usize,
+    possible_targets: Vec<usize>,
+    target_index: usize,
+    target_count: usize,
+    target_indices: Vec<Vec<usize>>,
+}
+
+#[derive(Clone, Debug)]
+struct ApplyAction {
+    source_index: usize,
+    action_index: usize,
+    target_indices: Vec<Vec<usize>>
+}
+
+#[derive(Clone, Debug)]
+struct PostTurn {
+    source_index: usize
+}
+
+// TODO: consider removing in favor of raw enum?
+#[derive(Clone, Debug)]
+struct CombatState<S> {
+    combatants: Vec<Combatant>,
+    turn_order: Vec<usize>,
+    turn_order_iterator: usize,
+    state: S,
+}
+
+enum GetSubActionResult {
+    GetTargets(CombatState<GetTargets>),
+    ApplyAction(CombatState<ApplyAction>),
+}
+
+enum GetTargetsResult {
+    GetSubAction(CombatState<GetSubAction>),
+    GetTargets(CombatState<GetTargets>),
+}
+
+#[derive(Clone, Debug)]
+enum CombatInstance {
+    PreTurn(CombatState<PreTurn>),
+    GetAction(CombatState<GetAction>),
+    GetSubAction(CombatState<GetSubAction>),
+    GetTargets(CombatState<GetTargets>),
+    ApplyAction(CombatState<ApplyAction>),
+    PostTurn(CombatState<PostTurn>),
+}
+
+impl CombatInstance {
+    pub fn new(combatants: Vec<Combatant>) -> Self {
+        let turn_order = calculate_turn_order(&combatants);
+
+        Self::PreTurn(
+            CombatState {
+                combatants,
+                turn_order,
+                turn_order_iterator: 0,
+                state: PreTurn
+            }
+        )
+    }
+}
+
+impl CombatState<PreTurn> {
+    pub fn next(mut self) -> CombatState<GetAction> {
+        let source_index = self.turn_order[self.turn_order_iterator];
+        let turn_order_iterator = (self.turn_order_iterator + 1) % self.turn_order.len();
+
+        // decrement status_effect lifetimes
+        for status_effect in &mut self.combatants[source_index].status_effects {
             if let Lifetime::Active(ref mut lifetime) = status_effect.lifetime {
                 *lifetime -= std::cmp::min(*lifetime, 1);
             }
         }
 
-        // decrement the lifetime of modifiers
+        // decrement modifier lifetimes
         for stat in 0..Stat::MaxValue as usize {
-            for modifier in &mut combatants[source_index].modifiers[stat] {
+            for modifier in &mut self.combatants[source_index].modifiers[stat] {
                 if let Lifetime::Active(ref mut lifetime) = modifier.lifetime {
                     *lifetime -= std::cmp::min(*lifetime, 1)
                 }
             }
         }
 
-        // get action
-        let action_index = if source_index == 0 { get_action_index(&combatants[source_index]) } else { 0 };
-        let action = combatants[source_index].actions[action_index];
+        CombatState {
+            combatants: self.combatants,
+            turn_order: self.turn_order,
+            turn_order_iterator,
+            state: GetAction {
+                source_index,
+                action_index: 0,
+            },
+        }
+    }
+}
 
-        // process action
-        for subaction in action.sub_actions {
-            let possible_targets: Vec<usize> = combatants
-                .iter()
-                .enumerate()
-                .filter(|&(index, combatant)| {
-                    subaction.target_flags.iter().fold(true, |is_valid_target, or_conditions| {
-                        is_valid_target && or_conditions.iter().fold(false, |is_valid_target, target_flag| {
-                            is_valid_target || match *target_flag {
-                                TargetFlag::Any => true,
-                                TargetFlag::Gender(gender) => combatant.gender == gender,
-                                TargetFlag::Origin => source_index == index,
-                            }
-                        })
+impl<'a> CombatState<GetAction> {
+    pub fn next(self) -> CombatState<GetSubAction> {
+        CombatState {
+            combatants: self.combatants,
+            turn_order: self.turn_order,
+            turn_order_iterator: self.turn_order_iterator,
+            state: GetSubAction {
+                source_index: self.state.source_index,
+                action_index: self.state.action_index,
+                sub_action_index: 0,
+                target_indices: vec![],
+            }
+        }
+    }
+
+    pub fn transform(mut self, input: Input) -> Self {
+        self.state.action_index = match input {
+            Input::Next => (self.state.action_index + 1) % self.combatants[self.state.source_index].actions.len(),
+            Input::Previous => if self.state.action_index == 0 { self.combatants[self.state.source_index].actions.len() - 1 } else { self.state.action_index - 1 },
+            _ => self.state.action_index,
+        };
+
+        self
+    }
+}
+
+impl<'a> CombatState<GetSubAction> {
+    pub fn next(self) -> GetSubActionResult {
+        let action = Action::from_identifier(self.combatants[self.state.source_index].actions[self.state.action_index]);
+        match action.sub_actions.get(self.state.sub_action_index) {
+            Some(sub_action) => {
+                let possible_targets = calculate_possible_targets(&self.combatants, self.state.source_index, sub_action);
+
+                GetSubActionResult::GetTargets(
+                    CombatState {
+                        combatants: self.combatants,
+                        turn_order: self.turn_order,
+                        turn_order_iterator: self.turn_order_iterator,
+                        state: GetTargets {
+                            source_index: self.state.source_index,
+                            action_index: self.state.action_index,
+                            sub_action_index: self.state.sub_action_index,
+                            possible_targets,
+                            target_index: 0,
+                            target_count: 0,
+                            target_indices: self.state.target_indices,
+                        }
                     }
-                )})
-                .map(|(index, _)| index)
-                .collect();
-
-            let target_indices = match subaction.targeting_scheme {
-                TargetingScheme::All => possible_targets,
-                TargetingScheme::MultiTarget(target_count) => {
-                    let mut target_indices = vec![];
-                    for _ in 0..target_count {
-                        target_indices.push(
-                            if source_index == 0 { get_target_index(combatants, &possible_targets) }
-                            else { (source_index + 1) % combatants.len() }
-                        );
+                )
+            },
+            None => GetSubActionResult::ApplyAction(
+                CombatState {
+                    combatants: self.combatants,
+                    turn_order: self.turn_order,
+                    turn_order_iterator: self.turn_order_iterator,
+                    state: ApplyAction {
+                        source_index: self.state.source_index,
+                        action_index: self.state.action_index,
+                        target_indices: self.state.target_indices,
                     }
+                }
+            )
+        }
+    }
+}
 
-                    target_indices
-                },
-                TargetingScheme::SingleTarget => {
-                    let target_index = {
-                        if source_index == 0 { get_target_index(combatants, &possible_targets) }
-                        else { (source_index + 1) % combatants.len() }
-                    };
+impl CombatState<GetTargets> {
+    pub fn next(mut self) -> GetTargetsResult {
+        let combatants = self.combatants;
+        let turn_order = self.turn_order;
+        let turn_order_iterator = self.turn_order_iterator;
+        let source_index = self.state.source_index;
+        let action_index = self.state.action_index;
+        let action = Action::from_identifier(combatants[source_index].actions[action_index]);
 
-                    vec![target_index]
-                },
-            };
+        match action.sub_actions[self.state.sub_action_index].targeting_scheme {
+            TargetingScheme::All => {
+                // push all possible targets to target indices
+                self.state.target_indices.push(self.state.possible_targets);
 
-            for target_index in target_indices {
+                GetTargetsResult::GetSubAction(CombatState {
+                    combatants, turn_order, turn_order_iterator,
+                    state: GetSubAction {
+                        source_index, action_index,
+                        sub_action_index: self.state.sub_action_index + 1,
+                        target_indices: self.state.target_indices,
+                    }
+                })
+            },
+            TargetingScheme::MultiTarget(count) => {
+                // add the entry if it doesn't exist and push the target to state after acquiring it from possible_targets
+                if let None = self.state.target_indices.get(self.state.sub_action_index) { self.state.target_indices.push(vec![]); }
+                self.state.target_indices[self.state.sub_action_index].push(self.state.possible_targets[self.state.target_index]);
+                let target_count = self.state.target_count + 1;
+
+                // determine if we've pushed enough targets
+                if target_count == count {
+                    GetTargetsResult::GetSubAction(CombatState {
+                        combatants, turn_order, turn_order_iterator,
+                        state: GetSubAction {
+                            source_index, action_index,
+                            sub_action_index: self.state.sub_action_index + 1,
+                            target_indices: self.state.target_indices,
+                        }
+                    })
+                } else {
+                    GetTargetsResult::GetTargets(CombatState {
+                        combatants, turn_order, turn_order_iterator,
+                        state: GetTargets {
+                            source_index, action_index,
+                            sub_action_index: self.state.sub_action_index,
+                            possible_targets: self.state.possible_targets,
+                            target_index: self.state.target_index,
+                            target_count,
+                            target_indices: self.state.target_indices,
+                        }
+                    })
+                }
+            }
+            TargetingScheme::SingleTarget => {
+                // add the entry if it doesn't exist and push the target to state after acquiring it from possible_targets
+                if let None = self.state.target_indices.get(self.state.sub_action_index) { self.state.target_indices.push(vec![]); }
+                self.state.target_indices[self.state.sub_action_index].push(self.state.possible_targets[self.state.target_index]);
+
+                GetTargetsResult::GetSubAction(CombatState {
+                    combatants, turn_order, turn_order_iterator,
+                    state: GetSubAction {
+                        source_index, action_index,
+                        sub_action_index: self.state.sub_action_index + 1,
+                        target_indices: self.state.target_indices,
+                    }
+                })
+            }
+        }
+    }
+
+    pub fn transform(mut self, input: Input) -> Self {
+        self.state.target_index = match input {
+            Input::Next => (self.state.target_index + 1) % self.state.possible_targets.len(),
+            Input::Previous => if self.state.target_index == 0 { self.state.possible_targets.len() - 1 } else { self.state.target_index - 1 },
+            _ => self.state.target_index,
+        };
+
+        self
+    }
+}
+
+impl<'a> CombatState<ApplyAction> {
+    pub fn next(mut self) -> CombatState<PostTurn> {
+        let source_index = self.state.source_index;
+        let action = Action::from_identifier(self.combatants[source_index].actions[self.state.action_index]);
+        
+        for i in 0..action.sub_actions.len() {
+            for target_index in &self.state.target_indices[i] {
+                // split combatants array into two arrays then pull an element from each: blame the borrow checker
                 let (target, source) = match source_index {
-                    source_index if source_index > target_index => {
-                        let (target_container, source_container) = combatants.split_at_mut(source_index);
-                        (&mut target_container[target_index], EffectSource::Other(&source_container[0]))
+                    source_index if source_index > *target_index => {
+                        let (target_container, source_container) = self.combatants.split_at_mut(source_index);
+                        (&mut target_container[*target_index], EffectSource::Other(&source_container[0]))
                     },
-                    source_index if source_index < target_index => {
-                        let (source_container, target_container) = combatants.split_at_mut(target_index);
+                    source_index if source_index < *target_index => {
+                        let (source_container, target_container) = self.combatants.split_at_mut(*target_index);
                         (&mut target_container[0], EffectSource::Other(&source_container[source_index]))
                     },
-                    _ => (&mut combatants[target_index], EffectSource::Origin),
+                    _ => (&mut self.combatants[*target_index], EffectSource::Origin),
                 };
-
-                for effect in subaction.effects {
+    
+                // apply every effect in the current sub_action
+                for effect in action.sub_actions[i].effects {
                     match *effect {
                         Effect::Damage(damage) => apply_damage(target, source, damage),
                         Effect::Modifier(modifier, stat) => apply_modifier(target, modifier, stat),
@@ -227,118 +453,55 @@ fn simulate_combat(combatants: &mut [Combatant]) {
             }
         }
 
-        // apply status_effects
-        for i in 0..combatants[source_index].status_effects.len() {
-            let status_effect = combatants[source_index].status_effects[i];
-            process_damage(&mut combatants[source_index], status_effect.aspect, status_effect.value);
+        CombatState {
+            combatants: self.combatants,
+            turn_order: self.turn_order,
+            turn_order_iterator: self.turn_order_iterator,
+            state: PostTurn { source_index },
+        }
+    }
+}
+
+impl CombatState<PostTurn> {
+    pub fn next(mut self) -> CombatState<PreTurn> {
+        let source_index = self.state.source_index;
+        let source = &mut self.combatants[source_index];
+
+        for i in 0..source.status_effects.len() {
+            let status_effect = source.status_effects[i];
+            process_damage(source, status_effect.aspect, status_effect.value);
         }
 
-        // remove dead status_effects
-        combatants[source_index].status_effects.retain(|status_effect|
+        // remove all dead status_effects
+        source.status_effects.retain(|status_effect|
             if let Lifetime::Active(lifetime) = status_effect.lifetime { lifetime > 0 } else { true }
         );
 
-        // remove dead modifiers
+        // remove all dead modifiers
         for stat in 0..Stat::MaxValue as usize {
-            combatants[source_index].modifiers[stat].retain(|modifier|
+            source.modifiers[stat].retain(|modifier|
                 if let Lifetime::Active(lifetime) = modifier.lifetime { lifetime > 0 } else { true }
             );
         }
 
-        // determine winner or continue
-        living_count = 0;
-        combatants.iter().for_each(|combatant| if combatant.alive() { living_count += 1; });
+        CombatState {
+            combatants: self.combatants,
+            turn_order: self.turn_order,
+            turn_order_iterator: self.turn_order_iterator,
+            state: PreTurn,
+        }
     }
 }
 
 fn main() -> std::io::Result<()> {
-    let attack = Action {
-        display_name: "Attack",
-        sub_actions: &[
-            SubAction {
-                effects: &[
-                    Effect::Damage(Damage {
-                        aspect: DamageAspect::Physical, 
-                        scaling: Fraction::new(1, 1),
-                    }),
-                ],
-                target_flags: &[&[TargetFlag::Any]],
-                targeting_scheme: TargetingScheme::SingleTarget,
-            },
-        ],
-    };
-
-    let sweep = Action {
-        display_name: "Sweep",
-        sub_actions: &[
-            SubAction {
-                effects: &[
-                    Effect::Damage(Damage {
-                        aspect: DamageAspect::Physical, 
-                        scaling: Fraction::new(2, 3),
-                    }),
-                ],
-                target_flags: &[&[TargetFlag::Any]],
-                targeting_scheme: TargetingScheme::MultiTarget(3),
-            },
-        ],
-    };
-
-    let scorch = Action {
-        display_name: "Scorch",
-        sub_actions: &[
-            SubAction {
-                effects: &[
-                    Effect::StatusEffect(StatusEffect {
-                        aspect: DamageAspect::Fire,
-                        scaling: Fraction::new(2, 3),
-                        lifetime: Lifetime::Active(3),
-                    }),
-                ],
-                target_flags: &[&[TargetFlag::Any]],
-                targeting_scheme: TargetingScheme::SingleTarget,
-            },
-        ],
-    };
-
-    let skip = Action {
-        display_name: "Skip",
-        sub_actions: &[],
-    };
-
-    let grenade = Item {
-        display_name: "Grenade",
-        effects: &[
-            Effect::Damage(Damage {
-                aspect: DamageAspect::Physical,
-                scaling: Fraction::new(12, 1),
-            }),
-            Effect::StatusEffect(StatusEffect {
-                aspect: DamageAspect::Fire,
-                scaling: Fraction::new(5, 2),
-                lifetime: Lifetime::Active(3),
-            }),
-        ],
-        target_flags: &[&[TargetFlag::Any]],
-        target_count: 1,
-    };
-
-    let cracked_bellroot_seed = Item {
-        display_name: "Cracked Bellroot Seed",
-        effects: &[
-            Effect::Damage(Damage {
-                aspect: DamageAspect::Physical,
-                scaling: Fraction::new(3, 1)
-            }),
-        ],
-        target_flags: &[&[TargetFlag::Any]],
-        target_count: 3,
-    };
-
     let brayden = Combatant {
-        name: "Brayden",
+        name: "Brayden".to_string(),
         gender: Gender::Male,
-        actions: &[&attack, &sweep, &skip],
+        actions: vec![
+            ActionIdentifier::Attack,
+            ActionIdentifier::Sweep,
+            ActionIdentifier::Skip,
+        ],
 
         hp: 70,
         hp_max: 70,
@@ -349,9 +512,9 @@ fn main() -> std::io::Result<()> {
     };
 
     let chay = Combatant {
-        name: "Chay",
+        name: "Chay".to_string(),
         gender: Gender::Male,
-        actions: &[&scorch],
+        actions: vec![ActionIdentifier::Scorch],
 
         hp: 46,
         hp_max: 46,
@@ -361,9 +524,64 @@ fn main() -> std::io::Result<()> {
         modifiers: [vec![], vec![], vec![], vec![], vec![], vec![], vec![]],
     };
 
-    let combatants = &mut vec![brayden, chay];
-    simulate_combat(combatants);
-    println!("{:#?}", combatants);
+    let event_loop = EventLoop::new();
+    let window = Window::new(&event_loop).expect("error creating window");
 
-    Ok(())
+    let mut input_instance = Gilrs::new().unwrap();
+    let mut combat_instance = Some(CombatInstance::new(vec![brayden, chay]));
+    let mut state_buffer = vec![];
+
+    event_loop.run(move |event, _, control_flow| {
+        *control_flow = ControlFlow::Poll;
+        match event {
+            Event::WindowEvent { event: WindowEvent::CloseRequested, .. } => *control_flow = ControlFlow::Exit,
+            Event::MainEventsCleared => {
+                // application update code
+                let input = get_input(&mut input_instance);
+                for input in input {
+                    loop {
+                        combat_instance = Some(match combat_instance.take().unwrap() { // TODO: better way than take/unwrap?
+                            CombatInstance::PreTurn(state) => CombatInstance::GetAction(state.next()),
+                            CombatInstance::GetAction(state) => {
+                                match input {
+                                    Input::Select => {
+                                        state_buffer = vec![CombatInstance::GetAction(state.clone())];
+                                        CombatInstance::GetSubAction(state.next())
+                                    },
+                                    _ => CombatInstance::GetAction(state.transform(input)),
+                                }
+                            },
+                            CombatInstance::GetSubAction(state) => match state.next() {
+                                GetSubActionResult::GetTargets(state) => CombatInstance::GetTargets(state),
+                                GetSubActionResult::ApplyAction(state) => CombatInstance::ApplyAction(state),
+                            },
+                            CombatInstance::GetTargets(state) => match input {
+                                Input::Select => {
+                                    match state.next() {
+                                        GetTargetsResult::GetSubAction(state) => CombatInstance::GetSubAction(state),
+                                        GetTargetsResult::GetTargets(state) => {
+                                            state_buffer.push(CombatInstance::GetTargets(state.clone()));
+                                            CombatInstance::GetTargets(state)
+                                        },
+                                    }
+                                },
+                                Input::Cancel => state_buffer.pop().unwrap(),
+                                _ => CombatInstance::GetTargets(state.transform(input)),
+                            },
+                            CombatInstance::ApplyAction(state) => CombatInstance::PostTurn(state.next()),
+                            CombatInstance::PostTurn(state) => CombatInstance::PreTurn(state.next()),
+                        });
+
+                        match combat_instance.as_ref().unwrap() {
+                            CombatInstance::GetAction(_) => break,
+                            CombatInstance::GetTargets(_) => break,
+                            _ => ()
+                        }
+                    }
+                    println!("{:?}", combat_instance);
+                }
+            },
+            _ => (),
+        }
+    });
 }
