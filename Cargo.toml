@@ -6,5 +6,6 @@ edition = "2018"
 
 [dependencies]
 colosseum = { path = "../colosseum" }
+either = "1.6.1"
 gilrs = "0.8.0"
 winit = "0.23.0"
