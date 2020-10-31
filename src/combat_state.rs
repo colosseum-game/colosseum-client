@@ -115,6 +115,7 @@ impl CombatState {
     }
 
     pub fn update(mut self, input_state: &InputState) -> Self {
+        // process input for states that need it
         for input in &input_state.input_buffer {
             match input {
                 Input::Unmapped => (),
@@ -145,6 +146,7 @@ impl CombatState {
             }
         }
 
+        // automatically progress through states that need no input
         loop {
             match self.state_type {
                 CombatStateType::PreTurn(state) => self.state_type = CombatStateType::GetAction(GetAction::from(state)),
