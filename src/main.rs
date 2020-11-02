@@ -10,9 +10,7 @@ mod combat_state;
 use combat_state::CombatState;
 
 mod input_state;
-use input_state::{
-    InputState
-};
+use input_state::InputState;
 
 use winit::{
     event::{
@@ -38,10 +36,23 @@ fn main() -> std::io::Result<()> {
 
         hp: 70,
         hp_max: 70,
-        stats: [12, 11, 0, 2, 67, 17, 7],
+        agility: 12,
+        physical_attack: 17,
+        physical_defense: 7,
+        physical_absorbtion: 0,
+        fire_attack: 11,
+        fire_defense: 0,
+        fire_absorbtion: 12,
+
+        agility_modifiers: vec![],
+        physical_attack_modifiers: vec![],
+        physical_defense_modifiers: vec![],
+        physical_absorbtion_modifiers: vec![],
+        fire_attack_modifiers: vec![],
+        fire_defense_modifiers: vec![],
+        fire_absorbtion_modifiers: vec![],
 
         status_effects: vec![],
-        modifiers: [vec![], vec![], vec![], vec![], vec![], vec![], vec![]],
     };
 
     let chay = Combatant {
@@ -51,17 +62,31 @@ fn main() -> std::io::Result<()> {
 
         hp: 46,
         hp_max: 46,
-        stats: [26, 126, 16, 0, 8, 6, 3],
+        agility: 26,
+        physical_attack: 6,
+        physical_defense: 3,
+        physical_absorbtion: 8,
+        fire_attack: 16,
+        fire_defense: 0,
+        fire_absorbtion: 126,
+
+        agility_modifiers: vec![],
+        physical_attack_modifiers: vec![],
+        physical_defense_modifiers: vec![],
+        physical_absorbtion_modifiers: vec![],
+        fire_attack_modifiers: vec![],
+        fire_defense_modifiers: vec![],
+        fire_absorbtion_modifiers: vec![],
 
         status_effects: vec![],
-        modifiers: [vec![], vec![], vec![], vec![], vec![], vec![], vec![]],
     };
 
-    let mut input_state = Some(InputState::new());
-    let mut combat_state = Some(CombatState::new(vec![brayden, chay]));
+    std::fs::write("combatants/brayden.json", serde_json::to_string_pretty(&brayden).expect("Unable to write to file"))?;
 
     let event_loop = EventLoop::new();
     let window = Window::new(&event_loop).expect("failed to create window_state");
+    let mut input_state = Some(InputState::new());
+    let mut combat_state = Some(CombatState::new(vec![brayden, chay]));
 
     event_loop.run(move |event, _, control_flow| {
         *control_flow = ControlFlow::Poll;
