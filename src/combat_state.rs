@@ -180,13 +180,13 @@ impl From<PreTurn> for GetAction {
         }
 
         // decrement modifier lifetimes
-        for stat in 0..Stat::MaxValue as usize {
-            for modifier in &mut combatants[source_index].modifiers[stat] {
+        Stat::iter().for_each(|stat|
+            for modifier in combatants[source_index].get_stat_modifiers_mut(stat) {
                 if let Lifetime::Active(ref mut lifetime) = modifier.lifetime {
                     *lifetime -= std::cmp::min(*lifetime, 1)
                 }
             }
-        }
+        );
 
         GetAction { combatants, turn_order, turn_order_iterator, source_index, action_index }
     }
@@ -380,7 +380,7 @@ impl From<ApplyAction> for PostTurn {
                             process_damage(target, damage.aspect, damage_value);
                         },
                         Effect::Modifier(modifier, stat) => {
-                            target.modifiers[stat as usize].push(modifier)
+                            target.get_stat_modifiers_mut(stat).push(modifier);
                         },
                         Effect::StatusEffect(status_effect) => {
                             let damage_value = calculate_damage_value(target, source, status_effect.aspect, status_effect.scaling);
@@ -422,11 +422,11 @@ impl From<PostTurn> for PreTurn {
         );
 
         // remove all dead modifiers
-        for stat in 0..Stat::MaxValue as usize {
-            source.modifiers[stat].retain(|modifier|
+        Stat::iter().for_each(|stat|
+            source.get_stat_modifiers_mut(stat).retain(|modifier|
                 if let Lifetime::Active(lifetime) = modifier.lifetime { lifetime > 0 } else { true }
-            );
-        }
+            )
+        );
 
         PreTurn { combatants, turn_order, turn_order_iterator }
     }

@@ -1,0 +1,17 @@
+{
+  "name": "Brayden",
+  "gender": "Male",
+  "actions": [
+    "Attack",
+    "Sweep",
+    "Skip"
+  ],
+  "hp_max": 70,
+  "agility": 12,
+  "fire_attack": 11,
+  "fire_defense": 0,
+  "fire_absorbtion": 12,
+  "physical_attack": 17,
+  "physical_defense": 7,
+  "physical_absorbtion": 0
+}

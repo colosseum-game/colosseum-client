@@ -8,4 +8,5 @@ edition = "2018"
 colosseum = { path = "../colosseum" }
 either = "1.6.1"
 gilrs = "0.8.0"
+serde_json = "1.0.59"
 winit = "0.23.0"
