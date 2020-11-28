@@ -1,20 +1,38 @@
-use colosseum::{
-    actions::*,
-    combatant::{
-        Combatant,
-        Gender,
-    },
+mod client_state;
+use client_state::ClientState;
+
+mod client_event;
+use client_event::{
+    ClientEvent,
+    ControlEvent,
+    NetworkEvent,
 };
 
-mod combat_state;
-use combat_state::CombatState;
+use gilrs::Button;
 
-mod input_state;
-use input_state::InputState;
+mod input;
+use input::{
+    Input,
+    RawInput,
+};
+
+mod server_connection;
+use server_connection::ServerConnection;
+
+use std::{
+    collections::{
+        HashMap,
+        VecDeque,
+    },
+    net::Shutdown,
+};
+
+use tokio::runtime;
 
 use winit::{
     event::{
-        Event,
+        Event as WinitEvent,
+        VirtualKeyCode,
         WindowEvent,
     },
     event_loop::{
@@ -24,77 +42,88 @@ use winit::{
     window::Window,
 };
 
-fn main() -> std::io::Result<()> {
-    let brayden = Combatant {
-        name: "Brayden".to_string(),
-        gender: Gender::Male,
-        actions: vec![
-            ActionIdentifier::Attack,
-            ActionIdentifier::Sweep,
-            ActionIdentifier::Skip,
-        ],
+fn main() {
+    // threaded runtime
+    let runtime = runtime::Builder::new_multi_thread()
+        .enable_io()
+        .build()
+        .unwrap();
 
-        hp: 70,
-        hp_max: 70,
-        agility: 12,
-        physical_attack: 17,
-        physical_defense: 7,
-        physical_absorbtion: 0,
-        fire_attack: 11,
-        fire_defense: 0,
-        fire_absorbtion: 12,
+    // winit
+    let event_loop = EventLoop::with_user_event();
+    let event_loop_proxy = event_loop.create_proxy();
+    let _window = Window::new(&event_loop);
 
-        agility_modifiers: vec![],
-        physical_attack_modifiers: vec![],
-        physical_defense_modifiers: vec![],
-        physical_absorbtion_modifiers: vec![],
-        fire_attack_modifiers: vec![],
-        fire_defense_modifiers: vec![],
-        fire_absorbtion_modifiers: vec![],
+    // state
+    let mut client_state = Some(ClientState::new());
 
-        status_effects: vec![],
-    };
+    //input
+    let mut gilrs = gilrs::Gilrs::new().unwrap();
+    let mut input_queue = VecDeque::new();
+    let input_map: HashMap<RawInput, Input> = [
+        (RawInput::Gamepad(Button::DPadDown), Input::Down),
+        (RawInput::Gamepad(Button::DPadUp), Input::Up),
+        (RawInput::Gamepad(Button::DPadRight), Input::Right),
+        (RawInput::Gamepad(Button::DPadLeft), Input::Left),
+        (RawInput::Gamepad(Button::East), Input::Cancel),
+        (RawInput::Gamepad(Button::South), Input::Select),
+        (RawInput::Keyboard(VirtualKeyCode::A), Input::Left),
+        (RawInput::Keyboard(VirtualKeyCode::D), Input::Right),
+        (RawInput::Keyboard(VirtualKeyCode::E), Input::Select),
+        (RawInput::Keyboard(VirtualKeyCode::Q), Input::Cancel),
+        (RawInput::Keyboard(VirtualKeyCode::S), Input::Down),
+        (RawInput::Keyboard(VirtualKeyCode::W), Input::Up),
+    ].iter().cloned().collect();
 
-    let chay = Combatant {
-        name: "Chay".to_string(),
-        gender: Gender::Male,
-        actions: vec![ActionIdentifier::Scorch],
-
-        hp: 46,
-        hp_max: 46,
-        agility: 26,
-        physical_attack: 6,
-        physical_defense: 3,
-        physical_absorbtion: 8,
-        fire_attack: 16,
-        fire_defense: 0,
-        fire_absorbtion: 126,
-
-        agility_modifiers: vec![],
-        physical_attack_modifiers: vec![],
-        physical_defense_modifiers: vec![],
-        physical_absorbtion_modifiers: vec![],
-        fire_attack_modifiers: vec![],
-        fire_defense_modifiers: vec![],
-        fire_absorbtion_modifiers: vec![],
-
-        status_effects: vec![],
-    };
-
-    std::fs::write("combatants/brayden.json", serde_json::to_string_pretty(&brayden).expect("Unable to write to file"))?;
-
-    let event_loop = EventLoop::new();
-    let window = Window::new(&event_loop).expect("failed to create window_state");
-    let mut input_state = Some(InputState::new());
-    let mut combat_state = Some(CombatState::new(vec![brayden, chay]));
+    // server connection
+    let mut server_connection = None;
 
     event_loop.run(move |event, _, control_flow| {
         *control_flow = ControlFlow::Poll;
+
         match event {
-            Event::WindowEvent { event: WindowEvent::CloseRequested, .. } => *control_flow = ControlFlow::Exit,
-            Event::MainEventsCleared => {
-                input_state = Some(input_state.take().unwrap().update());
-                combat_state = Some(combat_state.take().unwrap().update(input_state.as_ref().unwrap()));
+            WinitEvent::UserEvent(event) => match event {
+                ClientEvent::ControlEvent(event) => match event {
+                    ControlEvent::Terminate => *control_flow = ControlFlow::Exit
+                }
+                ClientEvent::Input(input) => input_queue.push_back(input),
+                ClientEvent::NetworkEvent(event) => match event {
+                    NetworkEvent::Connect => if let None = server_connection { server_connection = Some(ServerConnection::connect(&runtime)) },
+                    NetworkEvent::Connected => client_state = Some(client_state.take().unwrap().transform(&event_loop_proxy, ClientEvent::NetworkEvent(event))),
+                    NetworkEvent::ConnectFailed => {
+                        server_connection = None;
+                        client_state = Some(client_state.take().unwrap().transform(&event_loop_proxy, ClientEvent::NetworkEvent(event)))
+                    },
+                    NetworkEvent::Disconnect => server_connection = None,
+                    _ => (),
+                }
+            },
+            WinitEvent::LoopDestroyed => {
+                // Exit code
+            }
+            WinitEvent::MainEventsCleared => {
+                while let Some(gilrs::Event { event, .. }) = gilrs.next_event() {
+                    match event {
+                        gilrs::EventType::ButtonPressed(button, ..) => {
+                            if let Some(input) = input_map.get(&RawInput::Gamepad(button)) { input_queue.push_back(*input) }
+                        },
+                        _ => (),
+                    };
+                }
+
+                while let Some(input) = input_queue.pop_front() {
+                    client_state = Some(client_state.take().unwrap().transform(&event_loop_proxy, ClientEvent::Input(input)));
+                }
+
+                if let Some(ref mut connection) = server_connection { connection.update(&event_loop_proxy) }
+            },
+            WinitEvent::WindowEvent { event: WindowEvent::CloseRequested, .. } => *control_flow = ControlFlow::Exit,
+            WinitEvent::WindowEvent { event: WindowEvent::KeyboardInput { input, .. }, .. } => {
+                if input.state == winit::event::ElementState::Pressed {
+                    if let Some(keycode) = input.virtual_keycode {
+                        if let Some(input) = input_map.get(&RawInput::Keyboard(keycode)) { input_queue.push_back(*input) }
+                    }
+                }
             },
             _ => (),
         }
