@@ -20,7 +20,7 @@ pub enum ServerConnection {
 impl ServerConnection {
     pub fn connect(runtime: &Runtime) -> ServerConnection {
         let (sender, receiver) = oneshot::channel();
-        runtime.spawn(async move { sender.send(TcpStream::connect("localhost:40004").await); });
+        runtime.spawn(async move { sender.send(TcpStream::connect("localhost:40004").await).unwrap(); });
         ServerConnection::Connecting(receiver)
     }
 
