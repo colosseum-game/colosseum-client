@@ -24,7 +24,6 @@ use std::{
         HashMap,
         VecDeque,
     },
-    net::Shutdown,
 };
 
 use tokio::runtime;
@@ -55,7 +54,7 @@ fn main() {
     let _window = Window::new(&event_loop);
 
     // state
-    let mut client_state = Some(ClientState::new());
+    let mut client_state = ClientState::new();
 
     //input
     let mut gilrs = gilrs::Gilrs::new().unwrap();
@@ -89,10 +88,10 @@ fn main() {
                 ClientEvent::Input(input) => input_queue.push_back(input),
                 ClientEvent::NetworkEvent(event) => match event {
                     NetworkEvent::Connect => if let None = server_connection { server_connection = Some(ServerConnection::connect(&runtime)) },
-                    NetworkEvent::Connected => client_state = Some(client_state.take().unwrap().transform(&event_loop_proxy, ClientEvent::NetworkEvent(event))),
+                    NetworkEvent::Connected => client_state.transform(&event_loop_proxy, ClientEvent::NetworkEvent(event)),
                     NetworkEvent::ConnectFailed => {
                         server_connection = None;
-                        client_state = Some(client_state.take().unwrap().transform(&event_loop_proxy, ClientEvent::NetworkEvent(event)))
+                        client_state.transform(&event_loop_proxy, ClientEvent::NetworkEvent(event));
                     },
                     NetworkEvent::Disconnect => server_connection = None,
                     _ => (),
@@ -112,7 +111,7 @@ fn main() {
                 }
 
                 while let Some(input) = input_queue.pop_front() {
-                    client_state = Some(client_state.take().unwrap().transform(&event_loop_proxy, ClientEvent::Input(input)));
+                    client_state.transform(&event_loop_proxy, ClientEvent::Input(input));
                 }
 
                 if let Some(ref mut connection) = server_connection { connection.update(&event_loop_proxy) }
