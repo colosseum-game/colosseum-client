@@ -8,6 +8,8 @@ use client_event::{
     NetworkEvent,
 };
 
+use colosseum::connection::Connection;
+
 use gilrs::Button;
 
 mod input;
@@ -16,17 +18,18 @@ use input::{
     RawInput,
 };
 
-mod server_connection;
-use server_connection::ServerConnection;
-
 use std::{
     collections::{
         HashMap,
         VecDeque,
     },
+    net::SocketAddr,
 };
 
-use tokio::runtime;
+use tokio::{
+    net::TcpStream,
+    runtime,
+};
 
 use winit::{
     event::{
@@ -75,7 +78,7 @@ fn main() {
     ].iter().cloned().collect();
 
     // server connection
-    let mut server_connection = None;
+    let mut server_connection: Option<Connection> = None;
 
     event_loop.run(move |event, _, control_flow| {
         *control_flow = ControlFlow::Poll;
@@ -84,14 +87,14 @@ fn main() {
             WinitEvent::UserEvent(event) => match event {
                 ClientEvent::ControlEvent(event) => match event {
                     ControlEvent::Terminate => *control_flow = ControlFlow::Exit
-                }
+                },
                 ClientEvent::Input(input) => input_queue.push_back(input),
                 ClientEvent::NetworkEvent(event) => match event {
-                    NetworkEvent::Connect => if let None = server_connection { server_connection = Some(ServerConnection::connect(&runtime)) },
-                    NetworkEvent::Connected => client_state.transform(&event_loop_proxy, ClientEvent::NetworkEvent(event)),
-                    NetworkEvent::ConnectFailed => {
-                        server_connection = None;
-                        client_state.transform(&event_loop_proxy, ClientEvent::NetworkEvent(event));
+                    NetworkEvent::Connect => {
+                        let addr: SocketAddr = "127.0.0.1:40004".parse().unwrap();
+                        let stream = runtime.block_on(async { TcpStream::connect(addr).await.unwrap() });
+                        server_connection = Some(Connection::new(addr, stream));
+                        client_state.transform(&event_loop_proxy, ClientEvent::NetworkEvent(NetworkEvent::Connected));
                     },
                     NetworkEvent::Disconnect => server_connection = None,
                     _ => (),
@@ -99,7 +102,7 @@ fn main() {
             },
             WinitEvent::LoopDestroyed => {
                 // Exit code
-            }
+            },
             WinitEvent::MainEventsCleared => {
                 while let Some(gilrs::Event { event, .. }) = gilrs.next_event() {
                     match event {
@@ -113,8 +116,6 @@ fn main() {
                 while let Some(input) = input_queue.pop_front() {
                     client_state.transform(&event_loop_proxy, ClientEvent::Input(input));
                 }
-
-                if let Some(ref mut connection) = server_connection { connection.update(&event_loop_proxy) }
             },
             WinitEvent::WindowEvent { event: WindowEvent::CloseRequested, .. } => *control_flow = ControlFlow::Exit,
             WinitEvent::WindowEvent { event: WindowEvent::KeyboardInput { input, .. }, .. } => {

@@ -53,7 +53,7 @@ impl ClientState {
                                 2 => event_loop_proxy.send_event(ClientEvent::ControlEvent(ControlEvent::Terminate)).expect("event loop destroyed"),
                                 _ => panic!("unmatched cursor position")
                             },
-                            Input::Up => *cursor_position = match *cursor_position{
+                            Input::Up => *cursor_position = match *cursor_position {
                                 0 => 2,
                                 _ => *cursor_position - 1,
                             },
@@ -69,10 +69,10 @@ impl ClientState {
                         NetworkEvent::Connected => ClientState::WorldState(WorldState),
                         NetworkEvent::ConnectFailed => ClientState::MenuState(MenuState::AwaitingInput { cursor_position: 0 }),
                         _ => state,
-                    }
+                    },
                     _ => state,
                 }
-            }
+            },
             ClientState::WorldState(state) => ClientState::WorldState(state),
         });
 

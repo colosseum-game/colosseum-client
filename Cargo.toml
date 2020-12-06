@@ -10,5 +10,5 @@ colosseum = { package = "colosseum-core", path = "../colosseum-core" }
 either = "1.6.1"
 gilrs = "0.8.0"
 replace_with = "0.1.7"
-tokio = { version = "0.3.4", features = ["io-util", "macros", "net", "rt-multi-thread", "sync"] }
+tokio = { version = "0.3.5", features = ["io-util", "macros", "net", "rt-multi-thread", "sync"] }
 winit = "0.23.0"

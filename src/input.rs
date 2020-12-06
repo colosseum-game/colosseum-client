@@ -2,7 +2,7 @@ use gilrs::Button;
 
 use winit::event::VirtualKeyCode;
 
-/// TODO
+/// TODO: description
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum RawInput {
     Gamepad(Button),
@@ -15,8 +15,6 @@ pub enum Input {
     Cancel,
     Down,
     Left,
-    Next,
-    Previous,
     Right,
     Select,
     Up,
